@@ -5,8 +5,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:webview_cef/src/enums.dart';
-import 'package:webview_cef/webview_cef.dart';
+import 'enums.dart';
 import 'package:context_menus/context_menus.dart';
 
 import 'cursor.dart';

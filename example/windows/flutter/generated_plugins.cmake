@@ -3,9 +3,9 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  dart_cef
   screen_retriever
   url_launcher_windows
-  webview_cef
   window_manager
 )
 

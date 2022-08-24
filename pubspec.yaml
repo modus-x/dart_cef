@@ -1,7 +1,6 @@
-name: webview_cef
+name: dart_cef
 description: Flutter webview backed by CEF (Chromium Embedded Framework)
 version: 0.0.1
-homepage: https://github.com/hlwhl/webview_cef
 
 environment:
   sdk: ">=2.17.1 <3.0.0"
@@ -38,6 +37,8 @@ flutter:
     platforms:
       macos:
         pluginClass: WebviewCefPlugin
+      linux:
+        pluginClass: DartCefPlugin
       windows:
         pluginClass: WebviewCefPluginCApi
 

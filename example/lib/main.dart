@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:dart_cef/webview_cef.dart';
 import 'package:flutter/material.dart';
 import 'dart:async';
 
-import 'package:webview_cef/webview_cef.dart';
 import 'package:window_manager/window_manager.dart';
 
 double dp(double val, int places) {
@@ -69,7 +69,7 @@ class _MyAppState extends State<MyApp>
     return MaterialApp(
       home: Scaffold(
         appBar: AppBar(
-          bottom:  TabBar(
+          bottom: TabBar(
             controller: _tabController,
             tabs: const [
               Tab(text: "First browser"),

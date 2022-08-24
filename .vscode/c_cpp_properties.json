@@ -1,0 +1,18 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/bin",
+                "/home/modus/development/flutter/bin/cache/artifacts/engine/linux-arm64",
+                "/usr/include/**",
+                "/usr/lib64/**"
+
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/clang"
+        }
+    ],
+    "version": 4
+}
