@@ -92,6 +92,8 @@ namespace client
       settings.no_sandbox = true;
       settings.windowless_rendering_enabled = true;
       settings.multi_threaded_message_loop = true;
+      settings.remote_debugging_port = 8088;
+      CefString(&settings.log_file).FromASCII("webview_cef.log");
 
       if (settings.windowless_rendering_enabled)
       {

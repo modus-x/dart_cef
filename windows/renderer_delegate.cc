@@ -71,6 +71,10 @@ namespace client
           LOG(INFO) << "OnContextCreated!";
           // Retrieve the context's window object.
           CefRefPtr<CefV8Value> object = context->GetGlobal();
+
+          CefRefPtr<CefV8Value> svet = CefV8Value::CreateBool(true);
+          object->SetValue("isSvetophone", svet, V8_PROPERTY_ATTRIBUTE_NONE);
+
           if (frame->IsMain())
           {
             CefRefPtr<CefProcessMessage> message = CefProcessMessage::Create(client::renderer::kContextCreated);
