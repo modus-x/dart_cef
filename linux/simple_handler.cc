@@ -16,7 +16,6 @@
 #include "data.h"
 #include "webview.h"
 #include <fmt/core.h>
-#include "simple_handler.h"
 
 namespace
 {
@@ -124,16 +123,16 @@ bool SimpleHandler::DoClose(CefRefPtr<CefBrowser> browser)
 void SimpleHandler::OnBeforeClose(CefRefPtr<CefBrowser> browser)
 {
   CEF_REQUIRE_UI_THREAD();
-  // auto bridge = getBridge(browser->GetIdentifier());
+  auto bridge = getBridge(browser->GetIdentifier());
 
-  // if (bridge)
-  // {
-  //   cache_.erase(browser->GetIdentifier());
-  //   auto video_outlet_private =
-  //         (VideoOutletPrivate*)video_outlet_get_instance_private(bridge->texture_bridge);
-  //   browser_list_[video_outlet_private->texture_id]->resetBrowser();
-  //   bridge->OnShutdown();
-  // }
+  if (bridge)
+  {
+    cache_.erase(browser->GetIdentifier());
+    auto video_outlet_private =
+        get_video_outlet_private(bridge->texture_bridge);
+    browser_list_[video_outlet_private->texture_id]->resetBrowser();
+    bridge->OnShutdown();
+  }
 }
 
 void SimpleHandler::OnLoadError(CefRefPtr<CefBrowser> browser,
@@ -251,12 +250,14 @@ void SimpleHandler::GetViewRect(CefRefPtr<CefBrowser> browser, CefRect &rect)
 
 int64_t SimpleHandler::createBrowser(
     FlBinaryMessenger *messenger,
-    FlTextureRegistrar *texture_registrar, const CefString &url, const CefString &bind_func, const CefString &token, const CefString &access_token)
+    FlTextureRegistrar *texture_registrar, const CefString &url, const CefString &bind_func, const CefString &token, const CefString &access_token, GtkWidget *parent)
 {
-  // CefRefPtr<BrowserBridge> bridge(new BrowserBridge(messenger, texture_registrar, url, bind_func, token, access_token));
-  // auto texture_id = bridge->texture_id();
-  // browser_list_[texture_id] = bridge;
-  return 0;
+  CefRefPtr<BrowserBridge> bridge(new BrowserBridge(messenger, texture_registrar, url, bind_func, token, access_token, parent));
+  auto video_outlet_private =
+      get_video_outlet_private(bridge->texture_bridge);
+  auto texture_id = video_outlet_private->texture_id;
+  browser_list_[texture_id] = bridge;
+  return texture_id;
 }
 
 void SimpleHandler::OnPaint(CefRefPtr<CefBrowser> browser, CefRenderHandler::PaintElementType type,
@@ -264,15 +265,17 @@ void SimpleHandler::OnPaint(CefRefPtr<CefBrowser> browser, CefRenderHandler::Pai
 {
   CEF_REQUIRE_UI_THREAD();
   auto bridge = getBridge(browser->GetIdentifier());
-  // if (bridge && !bridge->closing && bridge->texture_bridge)
-  // {
-  //   if (type == PET_POPUP)
-  //   {
-  //   }
-  //   else
-  //   {
-  //   }
-  // }
+  if (bridge && !bridge->closing && bridge->texture_bridge)
+  {
+    if (type == PET_POPUP)
+    {
+      bridge->send_buffer(true, buffer, w, h);
+    }
+    else
+    {
+      bridge->send_buffer(false, buffer, w, h);
+    }
+  }
 }
 
 void SimpleHandler::OnPopupShow(CefRefPtr<CefBrowser> browser, bool show)
@@ -306,8 +309,7 @@ CefRefPtr<BrowserBridge> SimpleHandler::getBridge(int browser_id)
   return nullptr;
 }
 
-void SimpleHandler::sendKeyEvent(const CefKeyEvent &event)
-{
+void SimpleHandler::sendKeyEvent(GdkEventKey *event) {
   for (auto const &[key, val] : browser_list_)
   {
     if (val->isCurrent)

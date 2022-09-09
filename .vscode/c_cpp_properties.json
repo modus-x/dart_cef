@@ -4,11 +4,11 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
+                "${workspaceFolder}/linux",
                 "${workspaceFolder}/bin",
-                "/home/modus/development/flutter/bin/cache/artifacts/engine/linux-arm64",
+                "/home/modus/development/flutter/bin/cache/artifacts/engine/linux-x64",
                 "/usr/include/**",
                 "/usr/lib64/**"
-
             ],
             "defines": [],
             "compilerPath": "/usr/bin/clang"

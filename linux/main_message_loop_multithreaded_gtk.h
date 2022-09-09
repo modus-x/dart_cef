@@ -30,10 +30,10 @@ class MainMessageLoopMultithreadedGtk : public MainMessageLoop {
   void Quit() override;
   void PostTask(CefRefPtr<CefTask> task) override;
   bool RunsTasksOnCurrentThread() const override;
+  void RunTasks();
 
  private:
   static int TriggerRunTasks(void* self);
-  void RunTasks();
   void DoQuit();
 
   base::PlatformThreadId thread_id_;
@@ -46,7 +46,6 @@ class MainMessageLoopMultithreadedGtk : public MainMessageLoop {
   // Must be protected by |lock_|.
   std::queue<CefRefPtr<CefTask>> queued_tasks_;
 
-  DISALLOW_COPY_AND_ASSIGN(MainMessageLoopMultithreadedGtk);
 };
 
 }  // namespace client

@@ -5,15 +5,13 @@
 
 #include <cstring>
 #include <iostream>
+#include <thread>
 
 #include <gtk/gtk.h>
 
-#include <X11/Xlib.h>
-#undef Success    // Definition conflicts with cef_message_router.h
-#undef RootWindow // Definition conflicts with root_window.h
-
 #include <stdlib.h>
 #include <unistd.h>
+
 #include <memory>
 
 #include "include/base/cef_logging.h"
@@ -26,19 +24,132 @@
 #include "client_app_other.h"
 #include "client_switches.h"
 #include "client_renderer.h"
+#include "data.h"
+#include "simple_handler.h"
 
 #define DART_CEF_PLUGIN(obj)                                     \
   (G_TYPE_CHECK_INSTANCE_CAST((obj), dart_cef_plugin_get_type(), \
                               DartCefPlugin))
+
+CefRefPtr<SimpleHandler> handler(new SimpleHandler());
 
 struct _DartCefPlugin
 {
   GObject parent_instance;
   FlMethodChannel *method_channel;
   FlTextureRegistrar *texture_registrar;
+  FlBinaryMessenger *messenger;
 };
 
 G_DEFINE_TYPE(DartCefPlugin, dart_cef_plugin, g_object_get_type())
+
+namespace client
+{
+
+  GtkWidget *parent = nullptr;
+
+  namespace
+  {
+
+    MainMessageLoopMultithreadedGtk loop;
+
+    int initCef(int argc, char *argv[])
+    {
+      CefMainArgs main_args(argc, argv);
+
+      // Parse command-line arguments.
+      CefRefPtr<CefCommandLine> command_line = CefCommandLine::CreateCommandLine();
+      command_line->InitFromArgv(argc, argv);
+
+      // Create a ClientApp of the correct type.
+      CefRefPtr<CefApp> app;
+      ClientApp::ProcessType process_type = ClientApp::GetProcessType(command_line);
+      if (process_type == ClientApp::BrowserProcess)
+      {
+        std::cout << "browser process!" << std::endl;
+        app = new ClientAppBrowser();
+      }
+      else if (process_type == ClientApp::RendererProcess ||
+               process_type == ClientApp::ZygoteProcess)
+      {
+        // On Linux the zygote process is used to spawn other process types. Since
+        // we don't know what type of process it will be give it the renderer
+        // client.
+        app = new ClientAppRenderer();
+      }
+      else if (process_type == ClientApp::OtherProcess)
+      {
+        app = new ClientAppOther();
+      }
+
+      // Execute the secondary process, if any.
+      int exit_code = CefExecuteProcess(main_args, app, nullptr);
+      if (exit_code >= 0)
+        return exit_code;
+
+      CefSettings settings;
+
+      settings.no_sandbox = true;
+      settings.windowless_rendering_enabled = true;
+      settings.multi_threaded_message_loop = true;
+
+      if (settings.windowless_rendering_enabled)
+      {
+        // Force the app to use OpenGL <= 3.1 when off-screen rendering is enabled.
+        // TODO(cefclient): Rewrite OSRRenderer to use shaders instead of the
+        // fixed-function pipeline which was removed in OpenGL 3.2 (back in 2009).
+        setenv("MESA_GL_VERSION_override", "3.1", /*overwrite=*/0);
+      }
+
+      // Initialize CEF.
+      CefInitialize(main_args, settings, app, nullptr);
+
+      return exit_code;
+    }
+
+    void runTasks()
+    {
+      loop.RunTasks();
+    }
+
+    void setParent(GtkWidget *widget)
+    {
+      parent = widget;
+    }
+
+    GtkWidget *getParent()
+    {
+      return parent;
+    }
+  }
+}
+
+void sendKeyEvent(GdkEventKey *event) {
+  SimpleHandler::GetInstance()->sendKeyEvent(event);
+}
+
+int initCef(int argc, char *argv[])
+{
+  return client::initCef(argc, argv);
+}
+
+char **copyArgv(int argc, char *argv[])
+{
+  CefScopedArgArray scoped_arg_array(argc, argv);
+  char **argv_copy = scoped_arg_array.array();
+  return argv_copy;
+}
+
+int runTasks(void *self)
+{
+  client::runTasks();
+  return G_SOURCE_CONTINUE;
+}
+
+void setParentWindow(GtkWidget *parent)
+{
+  client::setParent(parent);
+}
 
 // Called when a method call is received from Flutter.
 static void dart_cef_plugin_handle_method_call(
@@ -48,6 +159,7 @@ static void dart_cef_plugin_handle_method_call(
   g_autoptr(FlMethodResponse) response = nullptr;
 
   const gchar *method = fl_method_call_get_name(method_call);
+  FlValue *args = fl_method_call_get_args(method_call);
 
   if (strcmp(method, "getPlatformVersion") == 0)
   {
@@ -56,6 +168,40 @@ static void dart_cef_plugin_handle_method_call(
     g_autofree gchar *version = g_strdup_printf("Linux %s", uname_data.version);
     g_autoptr(FlValue) result = fl_value_new_string(version);
     response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+  }
+  else if (strcmp(method, "createBrowser") == 0)
+  {
+    std::string url = fl_value_get_string(
+        fl_value_lookup_string(args, "startUrl"));
+    std::string bind_func = fl_value_get_string(
+        fl_value_lookup_string(args, "webMessageFunction"));
+    std::string token = fl_value_get_string(
+        fl_value_lookup_string(args, "token"));
+    std::string access_token = fl_value_get_string(
+        fl_value_lookup_string(args, "accessToken"));
+    bool is_string = fl_value_get_bool(
+        fl_value_lookup_string(args, "isHTML"));
+    if (is_string)
+    {
+      url = GetDataURI(url, "text/html");
+    }
+
+    int64_t texture_id = handler->createBrowser(self->messenger, self->texture_registrar, url, bind_func, token, access_token, client::getParent());
+    LOG(INFO) << "Create browser request for " << texture_id << " texture and url " << url;
+    g_autoptr(FlValue) result = fl_value_new_int(texture_id);
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(result));
+  }
+
+  else if (strcmp(method, "closeAllBrowsers") == 0)
+  {
+    bool force = fl_value_get_bool(args);
+    handler->CloseAllBrowsers(force);
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(NULL));
+  }
+  else if (strcmp(method, "shutdown") == 0)
+  {
+    CefShutdown();
+    response = FL_METHOD_RESPONSE(fl_method_success_response_new(NULL));
   }
   else
   {
@@ -91,9 +237,12 @@ void dart_cef_plugin_register_with_registrar(FlPluginRegistrar *registrar)
 
   g_autoptr(FlStandardMethodCodec) codec = fl_standard_method_codec_new();
 
+  plugin->messenger = fl_plugin_registrar_get_messenger(registrar);
+
   plugin->method_channel =
-      fl_method_channel_new(fl_plugin_registrar_get_messenger(registrar),
-                            "dart_vlc", FL_METHOD_CODEC(codec));
+      fl_method_channel_new(plugin->messenger,
+                            "webview_cef", FL_METHOD_CODEC(codec));
+
   plugin->texture_registrar =
       fl_plugin_registrar_get_texture_registrar(registrar);
   fl_method_channel_set_method_call_handler(plugin->method_channel, method_call_cb,
@@ -101,94 +250,6 @@ void dart_cef_plugin_register_with_registrar(FlPluginRegistrar *registrar)
                                             g_object_unref);
 
   g_object_unref(plugin);
+
+  LOG(INFO) << "Successfully loaded webview_cef plugin" << std::endl;
 }
-namespace client
-{
-  namespace
-  {
-
-    // int XErrorHandlerImpl(Display *display, XErrorEvent *event)
-    // {
-    //   LOG(WARNING) << "X error received: "
-    //                << "type " << event->type << ", "
-    //                << "serial " << event->serial << ", "
-    //                << "error_code " << static_cast<int>(event->error_code) << ", "
-    //                << "request_code " << static_cast<int>(event->request_code)
-    //                << ", "
-    //                << "minor_code " << static_cast<int>(event->minor_code);
-    //   return 0;
-    // }
-
-    // int XIOErrorHandlerImpl(Display *display)
-    // {
-    //   return 0;
-    // }
-
-    // void TerminationSignalHandler(int signatl)
-    // {
-    //   LOG(ERROR) << "Received termination signal: " << signatl;
-    // }
-
-    int initCef(int argc, char *argv[])
-    {
-      CefMainArgs main_args(argc, argv);
-
-      // Parse command-line arguments.
-      CefRefPtr<CefCommandLine> command_line = CefCommandLine::CreateCommandLine();
-
-      // Create a ClientApp of the correct type.
-      CefRefPtr<CefApp> app;
-      // std::cout << "browser process  " << std::endl;
-      // ClientApp::ProcessType process_type = ClientApp::GetProcessType(command_line);
-      // std::cout << "browser process  " << std::endl;
-      // if (process_type == ClientApp::BrowserProcess)
-      // {
-      //   app = new ClientAppBrowser();
-      // }
-      // else if (process_type == ClientApp::RendererProcess ||
-      //          process_type == ClientApp::ZygoteProcess)
-      // {
-      //   // On Linux the zygote process is used to spawn other process types. Since
-      //   // we don't know what type of process it will be give it the renderer
-      //   // client.
-      //   app = new ClientAppRenderer();
-      // }
-      // else if (process_type == ClientApp::OtherProcess)
-      // {
-      //   app = new ClientAppOther();
-      // }
-
-      // Execute the secondary process, if any.
-      int exit_code = CefExecuteProcess(main_args, app, nullptr);
-      if (exit_code >= 0)
-        return exit_code;
-
-      CefSettings settings;
-
-      // When generating projects with CMake the CEF_USE_SANDBOX value will be defined
-      // automatically. Pass -DUSE_SANDBOX=OFF to the CMake command-line to disable
-      // use of the sandbox.
-      settings.no_sandbox = true;
-      settings.windowless_rendering_enabled = true;
-      settings.multi_threaded_message_loop = true;
-
-      if (settings.windowless_rendering_enabled)
-      {
-        // Force the app to use OpenGL <= 3.1 when off-screen rendering is enabled.
-        // TODO(cefclient): Rewrite OSRRenderer to use shaders instead of the
-        // fixed-function pipeline which was removed in OpenGL 3.2 (back in 2009).
-        setenv("MESA_GL_VERSION_override", "3.1", /*overwrite=*/0);
-      }
-
-      // Initialize CEF.
-      CefInitialize(main_args, settings, app, nullptr);
-
-      return exit_code;
-    }
-
-  }
-}
-
- int initCef(int argc, char *argv[]) {
-  return client::initCef(argc, argv);
- }

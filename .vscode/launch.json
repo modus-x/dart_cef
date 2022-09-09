@@ -5,14 +5,23 @@
       "name": "Launch Cef exmaple",
       "cwd": "example",
       "request": "launch",
-      "type": "dart"
+      "type": "dart",
+      "env": {
+        "LD_PRELOAD": "/home/modus/code/dart_cef/example/build/linux/x64/debug/bundle/lib/libcef.so"
+      }
     },
     {
       "name": "Debug native example",
       "type": "cppdbg",
       "request": "launch",
-      "program": "${workspaceFolder}/example/build/linux/arm64/debug/bundle/dart_cef_example",
-      "cwd": "${workspaceFolder}"
+      "program": "${workspaceFolder}/example/build/linux/x64/debug/bundle/dart_cef_example",
+      "cwd": "${workspaceFolder}",
+      "environment": [
+        {
+          "name": "LD_PRELOAD",
+          "value": "/home/modus/code/dart_cef/example/build/linux/x64/debug/bundle/lib/libcef.so"
+        }
+      ]
     }
   ]
 }

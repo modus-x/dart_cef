@@ -9,22 +9,34 @@
 
 #include <flutter_linux/flutter_linux.h>
 
-void newBrowserInstance(int64_t texture_id, const CefString &initialUrl, const CefString &bind_func, const CefString &token, const CefString &access_token);
+#include "video_outlet.h"
+
+#include <gdk/gdkx.h>
+
+struct BrowserStartParams
+{ // Structure declaration
+    CefString url;
+    CefString bind_func;
+    CefString token;
+    CefString access_token;
+    int64_t texture_id;
+    GtkWidget* parent;
+};
+
+void newBrowserInstance(int64_t texture_id, const CefString &initialUrl, const CefString &bind_func, const CefString &token, const CefString &access_token, GtkWidget* parent);
 
 class BrowserBridge : public virtual CefBaseRefCounted
 {
 public:
     BrowserBridge(FlBinaryMessenger *messenger,
-                  FlTextureRegistrar *texture_registrar, const CefString &url, const CefString &bind_func, const CefString &token, const CefString &access_token);
+                  FlTextureRegistrar *texture_registrar, const CefString &url, const CefString &bind_func, const CefString &token, const CefString &access_token, GtkWidget* parent);
     ~BrowserBridge();
 
     void setBrowser(CefRefPtr<CefBrowser> &browser);
 
     void resetBrowser();
 
-    // VideoOutlet* texture_bridge;
-
-    // VideoOutlet* texture_bridge_pet;
+    void send_buffer(bool pet, const void *buffer, int32_t width, int32_t height);
 
     uint32_t width = 1920;
     uint32_t height = 1080;
@@ -33,6 +45,8 @@ public:
     int32_t current_offset_y = 0;
 
     bool isCurrent = false;
+    VideoOutlet *texture_bridge;
+    VideoOutlet *texture_bridge_pet;
 
     void OnAfterCreated();
 
@@ -46,8 +60,6 @@ public:
         bool canGoForward);
 
     void clearAllCookies();
-
-    void mainFrameLoaded(int statusCode);
 
     void OnTitleChanged(const CefString &title);
 
@@ -78,7 +90,7 @@ public:
 
     void browserEvent(WebviewEvent event);
 
-    void sendKeyEvent(const CefKeyEvent &event);
+    void sendKeyEvent(GdkEventKey *event);
 
     void sendMouseWheelEvent(CefMouseEvent &event,
                              int deltaX,
@@ -114,8 +126,9 @@ public:
 
     bool closing = false;
 
-private:
     CefRefPtr<CefBrowser> browser_;
+
+private:
 
     void OnWebviewStateChange(WebviewState state);
 
@@ -127,6 +140,10 @@ private:
 
     FlTextureRegistrar *texture_registrar_;
 
+    void *latestPetBuffer;
+
+    void *latestMainBuffer;
+
     template <typename T>
     void EmitEvent(const T &value)
     {
@@ -136,4 +153,6 @@ private:
         // }
     }
     IMPLEMENT_REFCOUNTING(BrowserBridge);
+
+    BrowserStartParams params;
 };

@@ -12,17 +12,26 @@ G_BEGIN_DECLS
 #endif
 
 typedef struct _DartCefPlugin DartCefPlugin;
-typedef struct {
+typedef struct
+{
   GObjectClass parent_class;
 } DartCefPluginClass;
 
 FLUTTER_PLUGIN_EXPORT GType dart_cef_plugin_get_type();
 
 FLUTTER_PLUGIN_EXPORT void dart_cef_plugin_register_with_registrar(
-    FlPluginRegistrar* registrar);
+    FlPluginRegistrar *registrar);
 
 FLUTTER_PLUGIN_EXPORT int initCef(int argc, char *argv[]);
 
+FLUTTER_PLUGIN_EXPORT char **copyArgv(int argc, char *argv[]);
+
+FLUTTER_PLUGIN_EXPORT int runTasks(void *self);
+
+FLUTTER_PLUGIN_EXPORT void setParentWindow(GtkWidget* parent);
+
+FLUTTER_PLUGIN_EXPORT void sendKeyEvent(GdkEventKey *event);
+
 G_END_DECLS
 
-#endif  // FLUTTER_PLUGIN_DART_CEF_PLUGIN_H_
+#endif // FLUTTER_PLUGIN_DART_CEF_PLUGIN_H_

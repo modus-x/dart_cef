@@ -36,13 +36,14 @@ add_library(${PLUGIN_NAME} SHARED
   "client_browser.cc"
   "client_renderer.cc"
   "client_switches.cc"
-  "main_message_loop_multithreaded_gtk.cc"
   "main_message_loop.cc"
+  "main_message_loop_multithreaded_gtk.cc"
   "renderer_delegate.cc"
   "data.cpp"
   "browser.cc"
   "simple_handler.cc"
   "simple_handler_win.cc"
+  "video_outlet.cc"
 )
 
 # Apply a standard set of build settings that are configured in the
@@ -60,11 +61,11 @@ target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
 # Source include directories and library dependencies. Add any plugin-specific
 # dependencies here.
 target_include_directories(${PLUGIN_NAME} INTERFACE
-  "${CMAKE_CURRENT_SOURCE_DIR}/include" PRIVATE ${BIN}/linux/arm64 "third_party/fmt/include")
+  "${CMAKE_CURRENT_SOURCE_DIR}/include" PRIVATE ${BIN}/linux/x64  "third_party/fmt/include")
 
 
 target_link_directories(
-  ${PLUGIN_NAME} PRIVATE ${BIN}/linux/arm64/Debug ${BIN}/linux/arm64/build/libcef_dll_wrapper
+  ${PLUGIN_NAME} PRIVATE ${BIN}/linux/x64/Debug
 )
 
 target_link_libraries(
@@ -80,21 +81,17 @@ target_link_libraries(
   libcef.so
 )
 
-# Set rpath so that libraries can be placed next to the executable.
-
-
 # List of absolute paths to libraries that should be bundled with the plugin.
 # This list could contain prebuilt libraries, or libraries created by an
 # external build triggered from this build file.
 set(dart_cef_bundled_libraries
-  ${BIN}/linux/arm64/Resources/icudtl.dat
-  ${BIN}/linux/arm64/Resources/resources.pak
-  $<$<CONFIG:Debug>:${BIN}/linux/arm64/Debug/libcef.so>
-  $<$<CONFIG:Debug>:${BIN}/linux/arm64/Debug/v8_context_snapshot.bin>
-  $<$<CONFIG:Debug>:${BIN}/linux/arm64/Debug/snapshot_blob.bin>
-  $<$<CONFIG:Debug>:${BIN}/linux/arm64/Debug/chrome-sandbox>
-  $<$<CONFIG:Release>:${BIN}/linux/arm64/Release/libcef.so>
-  $<$<CONFIG:Release>:${BIN}/linux/arm64/Release/v8_context_snapshot.bin>
-  $<$<CONFIG:Profile>:${BIN}/linux/arm64/Release/libcef.so>
-  $<$<CONFIG:Profile>:${BIN}/linux/arm64/Release/v8_context_snapshot.bin>
+  ${BIN}/linux/x64/Resources/icudtl.dat
+  ${BIN}/linux/x64/Resources/resources.pak
+  ${BIN}/linux/x64/Resources/locales
+  $<$<CONFIG:Debug>:${BIN}/linux/x64/Debug/libcef.so>
+  $<$<CONFIG:Debug>:${BIN}/linux/x64/Debug/v8_context_snapshot.bin>
+  $<$<CONFIG:Release>:${BIN}/linux/x64/Release/libcef.so>
+  $<$<CONFIG:Release>:${BIN}/linux/x64/Release/v8_context_snapshot.bin>
+  $<$<CONFIG:Profile>:${BIN}/linux/x64/Release/libcef.so>
+  $<$<CONFIG:Profile>:${BIN}/linux/x64/Release/v8_context_snapshot.bin>
   PARENT_SCOPE)

@@ -3,6 +3,8 @@
 
 #include <gtk/gtk.h>
 
+#include "dart_cef/dart_cef_plugin.h"
+
 G_DECLARE_FINAL_TYPE(MyApplication, my_application, MY, APPLICATION,
                      GtkApplication)
 

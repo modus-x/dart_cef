@@ -405,7 +405,6 @@ class WebviewController extends ValueNotifier<bool> {
     if (!value) {
       return;
     }
-    print("settings $_textureId to $current");
     return _methodChannel.invokeMethod('setCurrent', current);
   }
 
@@ -415,8 +414,8 @@ class WebviewController extends ValueNotifier<bool> {
       return;
     }
     assert(value);
-    return _methodChannel
-        .invokeMethod('setSize', [size.width.round(), size.height.round()]);
+    return _methodChannel.invokeMethod('setSize',
+        {"width": size.width.round(), "height": size.height.round()});
   }
 
   Future<void> _setOffset(Offset offset) async {
@@ -424,8 +423,8 @@ class WebviewController extends ValueNotifier<bool> {
       return;
     }
     assert(value);
-    return _methodChannel
-        .invokeMethod('setOffset', [offset.dx.round(), offset.dy.round()]);
+    return _methodChannel.invokeMethod(
+        'setOffset', {"x": offset.dx.round(), "y": offset.dy.round()});
   }
 
   Future<void> _setScrollDelta(int dx, int dy) async {
@@ -433,7 +432,7 @@ class WebviewController extends ValueNotifier<bool> {
       return;
     }
     assert(value);
-    return _methodChannel.invokeMethod('setScrollDelta', [dx, dy]);
+    return _methodChannel.invokeMethod('setScrollDelta', {"x": dx, "y": dy});
   }
 
   Future<void> updateOffset() async {
@@ -447,6 +446,33 @@ class WebviewController extends ValueNotifier<bool> {
       return _methodChannel
           .invokeMethod('setOffset', [offset.dx.round(), offset.dy.round()]);
     }
+  }
+
+  Future<void> _cursorClickDown(Offset position) async {
+    if (_isDisposed) {
+      return;
+    }
+    assert(value);
+    return _methodChannel.invokeMethod('cursorClickDown',
+        {"x": position.dx.round(), "y": position.dy.round()});
+  }
+
+  Future<void> _cursorClickUp(Offset position) async {
+    if (_isDisposed) {
+      return;
+    }
+    assert(value);
+    return _methodChannel.invokeMethod(
+        'cursorClickUp', {"x": position.dx.round(), "y": position.dy.round()});
+  }
+
+  Future<void> _setCursorPos(Offset position) async {
+    if (_isDisposed) {
+      return;
+    }
+    assert(value);
+    return _methodChannel.invokeMethod(
+        'setCursorPos', {"x": position.dx.round(), "y": position.dy.round()});
   }
 }
 
@@ -517,7 +543,14 @@ class _WebviewState extends State<Webview> {
                     -signal.scrollDelta.dy.round());
               }
             },
+            onPointerDown: (ev) {
+              _controller._cursorClickDown(ev.localPosition);
+            },
+            onPointerUp: (ev) {
+              _controller._cursorClickUp(ev.localPosition);
+            },
             onPointerHover: (ev) {
+              _controller._setCursorPos(ev.localPosition);
               if (!webViewFocus.hasFocus) {
                 webViewFocus.requestFocus();
               }

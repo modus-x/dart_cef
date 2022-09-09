@@ -14,6 +14,7 @@
 #include <optional>
 #include <thread>
 #include <mutex>
+#include <gdk/gdkx.h>
 
 #include "browser.h"
 
@@ -93,7 +94,7 @@ public:
   // create new browser and return texture_id for flutter side
   int64_t createBrowser(FlBinaryMessenger *messenger,
                         FlTextureRegistrar *texture_registrar, const CefString &url, const CefString &bind_func,
-                        const CefString &token, const CefString &access_token);
+                        const CefString &token, const CefString &access_token, GtkWidget* parent);
 
   // CefLoadHandler methods:
   virtual void OnLoadError(CefRefPtr<CefBrowser> browser,
@@ -109,7 +110,7 @@ public:
 
   virtual void OnPopupSize(CefRefPtr<CefBrowser> browser, const CefRect &rect) override;
 
-  void sendKeyEvent(const CefKeyEvent &event);
+  void sendKeyEvent(GdkEventKey *event);
 
   void sendMouseWheelEvent(CefMouseEvent &event,
                            int deltaX,

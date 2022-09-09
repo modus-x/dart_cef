@@ -73,16 +73,16 @@ MainMessageLoopMultithreadedGtk::MainMessageLoopMultithreadedGtk()
 }
 
 MainMessageLoopMultithreadedGtk::~MainMessageLoopMultithreadedGtk() {
-  DCHECK(RunsTasksOnCurrentThread());
   DCHECK(queued_tasks_.empty());
 }
 
 int MainMessageLoopMultithreadedGtk::Run() {
-  DCHECK(RunsTasksOnCurrentThread());
 
   // We use the default Glib context and Chromium creates its own context in
   // MessagePumpGlib (starting in M86).
-  main_context_ = g_main_context_default();
+  main_context_ = g_main_context_new();
+
+  g_main_context_push_thread_default(main_context_);
 
   main_loop_ = g_main_loop_new(main_context_, TRUE);
 
@@ -129,7 +129,6 @@ int MainMessageLoopMultithreadedGtk::TriggerRunTasks(void* self) {
 }
 
 void MainMessageLoopMultithreadedGtk::RunTasks() {
-  DCHECK(RunsTasksOnCurrentThread());
 
   std::queue<CefRefPtr<CefTask>> tasks;
 
@@ -147,7 +146,6 @@ void MainMessageLoopMultithreadedGtk::RunTasks() {
 }
 
 void MainMessageLoopMultithreadedGtk::DoQuit() {
-  DCHECK(RunsTasksOnCurrentThread());
   g_main_loop_quit(main_loop_);
 }
 

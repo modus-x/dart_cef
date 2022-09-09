@@ -38,7 +38,7 @@ namespace client
 
   void ClientAppBrowser::OnContextInitialized()
   {
-    LOG(INFO) << "onContextInititalized" << delegates_.size();
+    LOG(INFO) << "onContextInititalized " << delegates_.size();
     DelegateSet::iterator it = delegates_.begin();
     for (; it != delegates_.end(); ++it)
       (*it)->OnContextInitialized(this);
