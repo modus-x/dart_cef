@@ -30,7 +30,7 @@ FLUTTER_PLUGIN_EXPORT int runTasks(void *self);
 
 FLUTTER_PLUGIN_EXPORT void setParentWindow(GtkWidget* parent);
 
-FLUTTER_PLUGIN_EXPORT void sendKeyEvent(GdkEventKey *event);
+FLUTTER_PLUGIN_EXPORT bool sendKeyEvent(GdkEventKey *event);
 
 G_END_DECLS
 

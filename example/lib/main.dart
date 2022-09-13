@@ -130,7 +130,7 @@ class _WebviewBarState extends State<WebviewBar>
       _textController.text = url;
     });
     widget.webviewController.webMessage.listen((message) {
-      showAlert(message);
+      // showAlert(message);
     });
     // zoom = await _controller.getZoomLevel(); - CALLED ON WRONG THREAD, need to handle this
 
@@ -142,12 +142,11 @@ class _WebviewBarState extends State<WebviewBar>
     setState(() {});
   }
 
-  void showAlert(Map<dynamic, dynamic> event) {
+  void showAlert(String text) {
     showDialog(
         context: context,
         builder: (context) => AlertDialog(
-              content: Text(
-                  "Event type: ${event['type']}, created on: ${event['timestamp']}"),
+              content: Text(text),
               actions: <Widget>[
                 TextButton(
                   onPressed: () => Navigator.pop(context, 'Cancel'),
@@ -242,8 +241,8 @@ class _WebviewBarState extends State<WebviewBar>
                       "type": "event",
                       "timestamp": DateTime.now().toIso8601String()
                     });
-                    widget.webviewController
-                        .executeJavaScript("window.postMessage('$message')");
+                    widget.webviewController.executeJavaScript(
+                        """window.postMessage('{"test": 123}')""");
                   },
                 ),
                 IconButton(

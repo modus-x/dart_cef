@@ -110,7 +110,7 @@ public:
 
   virtual void OnPopupSize(CefRefPtr<CefBrowser> browser, const CefRect &rect) override;
 
-  void sendKeyEvent(GdkEventKey *event);
+  bool sendKeyEvent(GdkEventKey *event);
 
   void sendMouseWheelEvent(CefMouseEvent &event,
                            int deltaX,

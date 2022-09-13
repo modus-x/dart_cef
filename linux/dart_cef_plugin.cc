@@ -126,8 +126,8 @@ namespace client
   }
 }
 
-void sendKeyEvent(GdkEventKey *event) {
-  SimpleHandler::GetInstance()->sendKeyEvent(event);
+bool sendKeyEvent(GdkEventKey *event) {
+  return SimpleHandler::GetInstance()->sendKeyEvent(event);
 }
 
 int initCef(int argc, char *argv[])

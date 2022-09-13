@@ -67,7 +67,7 @@ bool SimpleHandler::OnProcessMessageReceived(
   }
   else if (message_name == client::renderer::kWebMessage)
   {
-    CefString webMessage = message->GetArgumentList()->GetString(0).ToString();
+    CefString webMessage = message->GetArgumentList()->GetString(0);
     auto bridge = getBridge(browser->GetIdentifier());
     if (bridge)
     {
@@ -309,15 +309,16 @@ CefRefPtr<BrowserBridge> SimpleHandler::getBridge(int browser_id)
   return nullptr;
 }
 
-void SimpleHandler::sendKeyEvent(GdkEventKey *event) {
+bool SimpleHandler::sendKeyEvent(GdkEventKey *event) {
   for (auto const &[key, val] : browser_list_)
   {
     if (val->isCurrent)
     {
       val->sendKeyEvent(event);
-      break;
+      return true;
     }
   }
+  return false;
 }
 
 void SimpleHandler::sendMouseWheelEvent(CefMouseEvent &event,
