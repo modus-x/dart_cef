@@ -621,7 +621,7 @@ class _WebviewCoreState extends State<WebviewCore> {
           isShown = true;
         });
       } else if (!event && context.contextMenuOverlay.mounted) {
-        context.contextMenuOverlay.hide();
+        context.contextMenuOverlay.close();
         setState(() {
           isShown = false;
         });

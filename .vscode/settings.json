@@ -81,6 +81,5 @@
         "codecvt": "cpp",
         "deque": "cpp",
         "queue": "cpp"
-    },
-    "cmake.sourceDirectory": "${workspaceFolder}/linux",
+    }
 }
