@@ -21,7 +21,7 @@ gboolean ClickEvent(GtkWidget *widget,
                     gpointer user_data)
 {
   std::cout << "click!!!" << std::endl;
-  return TRUE;
+  return FALSE;
 }
 
 gboolean
@@ -31,15 +31,14 @@ MoveEvent(
     gpointer user_data)
 {
   std::cout << "move!!!" << std::endl;
-  return TRUE;
+  return FALSE;
 }
 
 gboolean KeyEvent(GtkWidget *widget,
                   GdkEventKey *event,
                   gpointer user_data)
 {
-  sendKeyEvent(event);
-  return TRUE;
+  return sendKeyEvent(event);
 }
 
 // Implements GApplication::activate.
