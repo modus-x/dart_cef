@@ -486,7 +486,7 @@ class Webview extends StatefulWidget {
 }
 
 class _WebviewState extends State<Webview> {
-  final FocusNode webViewFocus = FocusNode();
+  final FocusScopeNode webViewFocus = FocusScopeNode();
 
   WebviewController get _controller => widget.controller;
   MouseCursor _cursor = SystemMouseCursors.basic;
@@ -522,9 +522,9 @@ class _WebviewState extends State<Webview> {
   @override
   Widget build(BuildContext context) {
     return SizedBox.expand(
-      child: Focus(
+      child: FocusScope(
+        node: webViewFocus,
         child: _buildInner(),
-        focusNode: webViewFocus,
       ),
     );
   }
