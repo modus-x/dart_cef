@@ -100,7 +100,7 @@ else()
 endif()
 
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter PkgConfig::GTK fmt::fmt
-cef_dll_wrapper libcef.so)
+libcef_dll_wrapper libcef.so)
 
 # List of absolute paths to libraries that should be bundled with the plugin.
 # This list could contain prebuilt libraries, or libraries created by an
