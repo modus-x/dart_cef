@@ -35,7 +35,7 @@ set_directory_properties(PROPERTIES EXCLUDE_FROM_ALL YES)
 
 FetchContent_Declare(
   cef
-  URL https://cef-builds.spotifycdn.com/cef_binary_106.1.1+g5891c70+chromium-106.0.5249.119_${CEF_ARCH}.tar.bz2
+  URL https://cef-builds.spotifycdn.com/cef_binary_107.1.12+g65b79a6+chromium-107.0.5304.122_${CEF_ARCH}.tar.bz2
 )
 
 FetchContent_MakeAvailable(cef)
