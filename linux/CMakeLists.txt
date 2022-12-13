@@ -11,6 +11,8 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(CMAKE_CXX_STANDARD 17)
 
+remove_definitions(-Werror)
+
 add_subdirectory(third_party/fmt)
 
 if(UNIX AND NOT APPLE)
@@ -23,13 +25,27 @@ include(FetchContent)
 set(FETCHCONTENT_QUIET FALSE)
 
 if(LINUX)
-  set(CEF_ARCH linux64)
+  execute_process(
+    COMMAND uname -m
+    COMMAND tr -d '\n'
+    OUTPUT_VARIABLE ARCH)
+  if(${ARCH} STREQUAL "x86_64")
+    set(ARCH "64")
+  elseif(${ARCH} STREQUAL "aarch64")
+    set(ARCH "arm64")
+    set(PROJECT_ARCH
+        ${ARCH}
+        CACHE INTERNAL "specify project arch")
+  endif()
+  set(CEF_ARCH linux${ARCH})
 endif()
 if(APPLE)
   set(CEF_ARCH macosx64)
 endif()
 
-set(USE_SANDBOX Off CACHE INTERNAL "Sandbox usage")
+message("building for ${CEF_ARCH}")
+
+option(USE_SANDBOX "" OFF)
 
 set_directory_properties(PROPERTIES EXCLUDE_FROM_ALL YES)
 
@@ -43,8 +59,11 @@ FetchContent_MakeAvailable(cef)
 FetchContent_GetProperties(
   cef
   SOURCE_DIR cef_source
-  BINARY_DIR cef_binary
-)
+  BINARY_DIR cef_binary)
+
+get_target_property(LIBCEF_OPTIONS libcef_dll_wrapper COMPILE_OPTIONS)
+list(REMOVE_ITEM LIBCEF_OPTIONS -Werror)
+set_target_properties(libcef_dll_wrapper PROPERTIES COMPILE_OPTIONS "${LIBCEF_OPTIONS}")
 
 # This value is used when generating builds using this plugin, so it must not be
 # changed.
@@ -78,7 +97,7 @@ add_library(
 # application-level CMakeLists.txt. This can be removed for plugins that want
 # full control over build settings.
 
-apply_standard_settings(${PLUGIN_NAME})
+# apply_standard_settings(${PLUGIN_NAME} )
 
 # Symbols are hidden by default to reduce the chance of accidental conflicts
 # between plugins. This should not be removed; any symbols that should be
@@ -86,6 +105,8 @@ apply_standard_settings(${PLUGIN_NAME})
 set_target_properties(${PLUGIN_NAME} PROPERTIES CXX_VISIBILITY_PRESET hidden)
 target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
 
+get_target_property(PLUGIN_OPTIONS ${PLUGIN_NAME} COMPILE_OPTIONS)
+message("plugin options are ${PLUGIN_OPTIONS}")
 # Source include directories and library dependencies. Add any plugin-specific
 # dependencies here.
 target_include_directories(
@@ -100,7 +121,9 @@ else()
 endif()
 
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter PkgConfig::GTK fmt::fmt
-libcef_dll_wrapper libcef.so)
+                                             libcef_dll_wrapper libcef.so)
+
+
 
 # List of absolute paths to libraries that should be bundled with the plugin.
 # This list could contain prebuilt libraries, or libraries created by an
