@@ -1,10 +1,10 @@
 import Cocoa
 import FlutterMacOS
 
-public class WebviewCefPlugin: NSObject, FlutterPlugin {
+public class DartCefPlugin: NSObject, FlutterPlugin {
   public static func register(with registrar: FlutterPluginRegistrar) {
-    let channel = FlutterMethodChannel(name: "webview_cef", binaryMessenger: registrar.messenger)
-    let instance = WebviewCefPlugin()
+    let channel = FlutterMethodChannel(name: "dart_cef", binaryMessenger: registrar.messenger)
+    let instance = DartCefPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
   }
 

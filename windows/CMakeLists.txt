@@ -5,21 +5,42 @@
 cmake_minimum_required(VERSION 3.14)
 
 # Project-level configuration.
-set(PROJECT_NAME "webview_cef")
+set(PROJECT_NAME "dart_cef")
 project(${PROJECT_NAME} LANGUAGES CXX)
 
 if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
   message(STATUS "${CMAKE_BUILD_TYPE}")
 endif()
 
-include(cmake/Downloader.cmake)
-prepareprebuiltfiles()
+include(FetchContent)
+set(FETCHCONTENT_QUIET FALSE)
 
 add_subdirectory(third_party/fmt)
 
+option(USE_SANDBOX "" OFF)
+
+set(CEF_ARCH windows64)
+
+set_directory_properties(PROPERTIES EXCLUDE_FROM_ALL YES)
+
+FetchContent_Declare(
+  cef
+  URL https://cef-builds.spotifycdn.com/cef_binary_107.1.12+g65b79a6+chromium-107.0.5304.122_${CEF_ARCH}.tar.bz2
+)
+set(CEF_RUNTIME_LIBRARY_FLAG
+    "/MD"
+    CACHE STRING "Optional flag specifying which runtime to use")
+
+FetchContent_MakeAvailable(cef)
+
+FetchContent_GetProperties(
+  cef
+  SOURCE_DIR cef_source
+  BINARY_DIR cef_binary)
+
 # This value is used when generating builds using this plugin, so it must not be
 # changed
-set(PLUGIN_NAME "webview_cef_plugin")
+set(PLUGIN_NAME "dart_cef_plugin")
 
 # Any new source files that you add to the plugin should be added here.
 list(
@@ -47,26 +68,31 @@ list(
   "renderer_delegate.h"
   "resource.h"
   "util_win.h"
+  "geometry_util.cc"
+  "geometry_util.h"
+  "bytes_write_handler.cc"
+  "bytes_write_handler.h"
+  "osr_dragdrop_events.h"
+  "osr_dragdrop_win.cc"
+  "osr_dragdrop_win.h"
   "util_win.cc"
   "data.cpp"
   "data.h"
   "browser.cc"
   "browser.h"
-  "webview_cef_plugin.cpp"
-  "webview_cef_plugin.h"
+  "dart_cef_plugin.cpp"
+  "dart_cef_plugin.h"
   "simple_handler.cc"
   "simple_handler.h"
   "simple_handler_win.cc"
   "texture.cc"
   "texture.h"
-  "webview.h"
-  )
+  "webview.h")
 
 # Define the plugin library target. Its name must not be changed (see comment on
 # PLUGIN_NAME above).
-add_library(
-  ${PLUGIN_NAME} SHARED "include/webview_cef/webview_cef_plugin_c_api.h"
-                        "webview_cef_plugin_c_api.cpp" ${PLUGIN_SOURCES})
+add_library(${PLUGIN_NAME} SHARED "include/dart_cef/dart_cef_plugin_c_api.h"
+                                  "dart_cef_plugin_c_api.cpp" ${PLUGIN_SOURCES})
 
 # Apply a standard set of build settings that are configured in the
 # application-level CMakeLists.txt. This can be removed for plugins that want
@@ -81,37 +107,39 @@ target_compile_definitions(${PLUGIN_NAME} PRIVATE FLUTTER_PLUGIN_IMPL)
 
 # Source include directories and library dependencies. Add any plugin-specific
 # dependencies here.
-target_include_directories(${PLUGIN_NAME}
-                           INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include"
-                           PRIVATE "third_party/fmt/include")
+target_include_directories(
+  ${PLUGIN_NAME}
+  INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/include"
+  PRIVATE ${cef_source} "third_party/fmt/include")
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  target_link_directories(${PLUGIN_NAME} PRIVATE ${cef_source}/Debug)
+else()
+  target_link_directories(${PLUGIN_NAME} PRIVATE ${cef_source}/Release)
+endif()
+
 target_link_libraries(
   ${PLUGIN_NAME}
   PRIVATE flutter
           flutter_wrapper_plugin
           fmt::fmt
+          libcef_dll_wrapper
           debug
-          ${CMAKE_CURRENT_SOURCE_DIR}/cefbins/debug/libcef.lib
-          debug
-          ${CMAKE_CURRENT_SOURCE_DIR}/cefbins/debug/libcef_dll_wrapper.lib
+          ${cef_source}/Debug/libcef.lib
           optimized
-          ${CMAKE_CURRENT_SOURCE_DIR}/cefbins/release/libcef.lib
-          optimized
-          ${CMAKE_CURRENT_SOURCE_DIR}/cefbins/release/libcef_dll_wrapper.lib)
+          ${cef_source}/Release/libcef.lib)
 
-# List of absolute paths to libraries that should be bundled with the plugin.
-# This list could contain prebuilt libraries, or libraries created by an
-# external build triggered from this build file.
-set(webview_cef_bundled_libraries
-    "${CMAKE_CURRENT_SOURCE_DIR}/cefbins/resources/locales"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cefbins/resources/icudtl.dat"
-    "${CMAKE_CURRENT_SOURCE_DIR}/cefbins/resources/resources.pak"
-    $<$<CONFIG:Debug>:${CMAKE_CURRENT_SOURCE_DIR}/cefbins/debug/bin/chrome_elf.dll>
-    $<$<CONFIG:Debug>:${CMAKE_CURRENT_SOURCE_DIR}/cefbins/debug/bin/libcef.dll>
-    $<$<CONFIG:Debug>:${CMAKE_CURRENT_SOURCE_DIR}/cefbins/debug/bin/v8_context_snapshot.bin>
-    $<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/cefbins/release/bin/chrome_elf.dll>
-    $<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/cefbins/release/bin/libcef.dll>
-    $<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/cefbins/release/bin/v8_context_snapshot.bin>
-    $<$<CONFIG:Profile>:${CMAKE_CURRENT_SOURCE_DIR}/cefbins/release/bin/chrome_elf.dll>
-    $<$<CONFIG:Profile>:${CMAKE_CURRENT_SOURCE_DIR}/cefbins/release/bin/libcef.dll>
-    $<$<CONFIG:Profile>:${CMAKE_CURRENT_SOURCE_DIR}/cefbins/release/bin/v8_context_snapshot.bin>
+set(dart_cef_bundled_libraries
+    ${cef_source}/Resources/icudtl.dat
+    ${cef_source}/Resources/resources.pak
+    ${cef_source}/Resources/locales
+    $<$<CONFIG:Debug>:${cef_source}/Debug/libcef.dll>
+    $<$<CONFIG:Debug>:${cef_source}/Debug/chrome_elf.dll>
+    $<$<CONFIG:Debug>:${cef_source}/Debug/v8_context_snapshot.bin>
+    $<$<CONFIG:Release>:${cef_source}/Release/libcef.dll>
+    $<$<CONFIG:Release>:${cef_source}/Release/chrome_elf.dll>
+    $<$<CONFIG:Release>:${cef_source}/Release/v8_context_snapshot.bin>
+    $<$<CONFIG:Profile>:${cef_source}/Release/libcef.dll>
+    $<$<CONFIG:Profile>:${cef_source}/Release/chrome_elf.dll>
+    $<$<CONFIG:Profile>:${cef_source}/Release/v8_context_snapshot.bin>
     PARENT_SCOPE)

@@ -16,11 +16,43 @@
 #include "renderer_delegate.h"
 #include "simple_handler.h"
 #include "include/wrapper/cef_helpers.h"
+#include "include/wrapper/cef_closure_task.h"
 #include "include/base/cef_callback.h"
 #include "include/wrapper/cef_closure_task.h"
+#include "geometry_util.h"
+#include "dart_cef_plugin.h"
 
 namespace
 {
+  HHOOK msg_hook = NULL;
+  bool mouse_up_received = false;
+
+  LRESULT CALLBACK MsgFilterProc(int code, WPARAM wparam, LPARAM lparam)
+  {
+    if (!mouse_up_received)
+    {
+      MSG *msg = reinterpret_cast<MSG *>(lparam);
+      LOG(INFO) << "msgfilterproc received event " << msg->message;
+      SendMessage(dart_cef::DartCefPlugin::GetInstance()->hwnd, msg->message, msg->wParam, msg->lParam);
+      // We do not care about WM_SYSKEYDOWN and WM_SYSKEYUP because when ALT key
+      // is pressed down on drag-and-drop, it means to create a link.
+      if (msg->message == WM_MOUSEMOVE || msg->message == WM_LBUTTONUP ||
+          msg->message == WM_KEYDOWN || msg->message == WM_KEYUP)
+      {
+        // Forward the message from the UI thread to the drag-and-drop thread.
+        // PostThreadMessage(dart_cef::DartCefPlugin::GetInstance()->cefUIThread,
+        //                   msg->message,
+        //                   msg->wParam,
+        //                   msg->lParam);
+
+        // If the left button is up, we do not need to forward the message any
+        // more.
+        if (msg->message == WM_LBUTTONUP || !(GetKeyState(VK_LBUTTON) & 0x8000))
+          mouse_up_received = true;
+      }
+    }
+    return CallNextHookEx(msg_hook, code, wparam, lparam);
+  }
 
   class WebviewCookieClearCompletionCallBack : public CefDeleteCookiesCallback
   {
@@ -203,7 +235,7 @@ BrowserBridge::BrowserBridge(
       { texture_registrar_->MarkTextureFrameAvailable(texture_id_pet_); });
 
   const auto method_channel_name =
-      fmt::format("webview_cef/{}", texture_id_);
+      fmt::format("dart_cef/{}", texture_id_);
   method_channel_ =
       std::make_unique<flutter::MethodChannel<flutter::EncodableValue>>(
           messenger, method_channel_name,
@@ -212,7 +244,7 @@ BrowserBridge::BrowserBridge(
                                         { HandleMethodCall(call, std::move(result)); });
 
   const auto event_channel_name =
-      fmt::format("webview_cef/{}/events", texture_id_);
+      fmt::format("dart_cef/{}/events", texture_id_);
   event_channel_ =
       std::make_unique<flutter::EventChannel<flutter::EncodableValue>>(
           messenger, event_channel_name,
@@ -250,8 +282,7 @@ void BrowserBridge::clearAllCookies()
 
 BrowserBridge::~BrowserBridge()
 {
-  method_channel_->SetMethodCallHandler(nullptr);
-  texture_registrar_->UnregisterTexture(texture_id_);
+  LOG(INFO) << "CEFSHUTDOWN browser bridge deleted";
 }
 
 void BrowserBridge::OnLoadingStateChange(
@@ -457,6 +488,29 @@ void BrowserBridge::HandleMethodCall(
       return result->Success();
     }
   }
+  else if (method_call.method_name().compare("onDragEnter") == 0)
+  {
+    if (const auto string = std::get_if<std::string>(method_call.arguments()))
+    {
+      OnDragEnterQ(*string);
+      return result->Success();
+    }
+  }
+  else if (method_call.method_name().compare("onDragLeave") == 0)
+  {
+    OnDragLeave();
+    return result->Success();
+  }
+  else if (method_call.method_name().compare("onDragOver") == 0)
+  {
+    OnDragOverQ();
+    return result->Success();
+  }
+  else if (method_call.method_name().compare("onDrop") == 0)
+  {
+    OnDropQ();
+    return result->Success();
+  }
   else if (method_call.method_name().compare("clearAllCookies") == 0)
   {
     clearAllCookies();
@@ -464,8 +518,11 @@ void BrowserBridge::HandleMethodCall(
   }
   else if (method_call.method_name().compare("getTextSelectionReport") == 0)
   {
-    CefRefPtr<CefProcessMessage> message = CefProcessMessage::Create(client::renderer::kTextSelectionReport);
-    browser_->GetMainFrame()->SendProcessMessage(PID_RENDERER, message);
+    if (!closing)
+    {
+      CefRefPtr<CefProcessMessage> message = CefProcessMessage::Create(client::renderer::kTextSelectionReport);
+      browser_->GetMainFrame()->SendProcessMessage(PID_RENDERER, message);
+    }
     return result->Success();
   }
   else if (method_call.method_name().compare("setZoomLevel") == 0)
@@ -504,12 +561,31 @@ void BrowserBridge::HandleMethodCall(
       return result->Success();
     }
   }
+  else if (method_call.method_name().compare("setFocus") == 0)
+  {
+    if (const auto focus = std::get_if<bool>(method_call.arguments()))
+    {
+      setFocus(*focus);
+      return result->Success();
+    }
+  }
+  else if (method_call.method_name().compare("setDartFocus") == 0)
+  {
+    if (const auto focus = std::get_if<bool>(method_call.arguments()))
+    {
+      dart_focus = *focus;
+      return result->Success();
+    }
+  }
   else if (method_call.method_name().compare("setHidden") == 0)
   {
     if (const auto hide = std::get_if<bool>(method_call.arguments()))
     {
-      LOG(INFO) << "setting browser to hidden " << *hide;
-      browser_->GetHost()->WasHidden(*hide);
+      LOG(INFO) << "webviewdbgr setting browser " << browser_->GetIdentifier() <<  " to hidden " << *hide;
+      if (!closing)
+      {
+        browser_->GetHost()->WasHidden(*hide);
+      }
       return result->Success();
     }
   }
@@ -517,7 +593,11 @@ void BrowserBridge::HandleMethodCall(
   {
     if (const auto current = std::get_if<bool>(method_call.arguments()))
     {
-      isCurrent = *current;
+      if (!closing)
+      {
+        isCurrent = *current;
+        SimpleHandler::GetInstance()->current_bridge = this;
+      }
       return result->Success();
     }
   }
@@ -532,9 +612,6 @@ void BrowserBridge::HandleMethodCall(
     cursorClick(point->first, point->second, false);
     return result->Success();
   }
-  else if (method_call.method_name().compare("contextMenu") == 0)
-  {
-  }
   else if (method_call.method_name().compare("setCursorPos") == 0)
   {
     const auto point = GetPointFromArgs(method_call.arguments());
@@ -548,6 +625,11 @@ void BrowserBridge::HandleMethodCall(
   {
     const auto point = GetPointFromArgs(method_call.arguments());
     cursorClick(point->first, point->second, true);
+    return result->Success();
+  }
+  else if (method_call.method_name().compare("paste") == 0)
+  {
+    paste();
     return result->Success();
   }
   else if (method_call.method_name().compare("setScrollDelta") == 0)
@@ -571,12 +653,18 @@ void BrowserBridge::HandleMethodCall(
 
 void BrowserBridge::loadUrl(const CefString &url)
 {
-  browser_->GetMainFrame()->LoadURL(url);
+  if (!closing)
+  {
+    browser_->GetMainFrame()->LoadURL(url);
+  }
 }
 
 void BrowserBridge::loadHTML(std::string text)
 {
-  browser_->GetMainFrame()->LoadURL(GetDataURI(text, "text/html"));
+  if (!closing)
+  {
+    browser_->GetMainFrame()->LoadURL(GetDataURI(text, "text/html"));
+  }
 }
 
 void BrowserBridge::scrollUp()
@@ -584,7 +672,11 @@ void BrowserBridge::scrollUp()
   CefMouseEvent ev;
   ev.x = 500;
   ev.y = 500;
-  browser_->GetHost()->SendMouseWheelEvent(ev, 0, -100);
+
+  if (!closing)
+  {
+    browser_->GetHost()->SendMouseWheelEvent(ev, 0, -100);
+  }
 }
 
 void BrowserBridge::scrollDown()
@@ -592,70 +684,267 @@ void BrowserBridge::scrollDown()
   CefMouseEvent ev;
   ev.x = 500;
   ev.y = 500;
-  browser_->GetHost()->SendMouseWheelEvent(ev, 0, 100);
+  if (!closing)
+  {
+    browser_->GetHost()->SendMouseWheelEvent(ev, 0, 100);
+  }
 }
 
 void BrowserBridge::changeSize(int w, int h)
 {
-  this->width = w;
-  this->height = h;
-  browser_->GetHost()->WasResized();
+  if (!closing)
+  {
+    this->width = w;
+    this->height = h;
+    browser_->GetHost()->WasResized();
+  }
 }
 
 void BrowserBridge::changeOffset(int x, int y)
 {
-  this->current_offset_x = x;
-  this->current_offset_y = y;
+  if (!closing)
+  {
+    this->current_offset_x = x;
+    this->current_offset_y = y;
+  }
 }
 
 void BrowserBridge::reload(bool ignoreCache)
 {
-  if (ignoreCache)
+  if (!closing)
   {
-    browser_->ReloadIgnoreCache();
-  }
-  else
-  {
-    browser_->Reload();
+    if (ignoreCache)
+    {
+      browser_->ReloadIgnoreCache();
+    }
+    else
+    {
+      browser_->Reload();
+    }
   }
 }
 
 void BrowserBridge::setZoomLevel(double level)
 {
-  browser_->GetHost()->SetZoomLevel(level);
+  if (!closing)
+  {
+    browser_->GetHost()->SetZoomLevel(level);
+  }
 }
 
 double BrowserBridge::getZoomLevel()
 {
-  return browser_->GetHost()->GetZoomLevel();
+  if (!closing)
+  {
+    return browser_->GetHost()->GetZoomLevel();
+  }
+  return 0;
 }
 
 void BrowserBridge::executeJavaScript(std::string js)
 {
-  browser_->GetMainFrame()->ExecuteJavaScript(js, browser_->GetMainFrame()->GetURL(), 0);
+  if (!closing)
+  {
+    browser_->GetMainFrame()->ExecuteJavaScript(js, browser_->GetMainFrame()->GetURL(), 0);
+  }
 }
 
 void BrowserBridge::cursorClick(int x, int y, bool up)
 {
-  CefMouseEvent ev;
-  ev.x = x;
-  ev.y = y;
-  browser_->GetHost()->SetFocus(true);
-  browser_->GetHost()->SendMouseClickEvent(ev, CefBrowserHost::MouseButtonType::MBT_LEFT, up, 1);
+
+  if (!closing && dart_focus)
+  {
+    CefMouseEvent ev;
+    ev.x = x;
+    ev.y = y;
+    browser_->GetHost()->SetFocus(true);
+    browser_->GetHost()->SendMouseClickEvent(ev, CefBrowserHost::MouseButtonType::MBT_LEFT, up, 1);
+  }
 }
 
 void BrowserBridge::sendKeyEvent(const CefKeyEvent &event)
 {
-  browser_->GetHost()->SendKeyEvent(event);
+  if (!closing && dart_focus)
+  {
+    browser_->GetHost()->SendKeyEvent(event);
+  }
+}
+
+void BrowserBridge::setFocus(bool focus)
+{
+  if (!closing)
+  {
+    browser_->GetHost()->SetFocus(focus);
+  }
 }
 
 void BrowserBridge::sendMouseWheelEvent(CefMouseEvent &event,
                                         int deltaX,
                                         int deltaY)
 {
-  event.x = event.x - current_offset_x;
-  event.y = event.y - current_offset_y;
-  browser_->GetHost()->SendMouseWheelEvent(event, deltaX, deltaY);
+  if (!closing)
+  {
+    event.x = event.x - current_offset_x;
+    event.y = event.y - current_offset_y;
+    browser_->GetHost()->SendMouseWheelEvent(event, deltaX, deltaY);
+  }
+}
+
+bool BrowserBridge::StartDragging(
+    CefRefPtr<CefDragData> drag_data,
+    CefRenderHandler::DragOperationsMask allowed_ops,
+    int x,
+    int y)
+{
+
+  // CEF_REQUIRE_UI_THREAD();
+  // mouse_up_received = false;
+
+  // mouse_up_received = false;
+  // DCHECK(!msg_hook);
+  // msg_hook = SetWindowsHookEx(WH_CALLWNDPROC,
+  //                             MsgFilterProc,
+  //                             NULL,
+  //                             dart_cef::DartCefPlugin::GetInstance()->appUIThread);
+
+  AttachThreadInput(GetCurrentThreadId(), dart_cef::DartCefPlugin::GetInstance()->appUIThread, TRUE);
+
+  // if (!dart_cef::DartCefPlugin::GetInstance()->drop_target)
+  //   return false;
+
+  // dart_cef::DartCefPlugin::GetInstance()->current_drag_op = DRAG_OPERATION_NONE;
+  auto result = dart_cef::DartCefPlugin::GetInstance()->drop_target->StartDragging(browser_, drag_data, allowed_ops, x, y);
+  // dart_cef::DartCefPlugin::GetInstance()->current_drag_op = DRAG_OPERATION_NONE;
+
+  POINT pt = {};
+  GetCursorPos(&pt);
+  ScreenToClient(dart_cef::DartCefPlugin::GetInstance()->hwnd, &pt);
+
+  pt.x = client::DeviceToLogical(pt.x, dart_cef::DartCefPlugin::GetInstance()->device_scale_factor);
+  pt.y = client::DeviceToLogical(pt.y, dart_cef::DartCefPlugin::GetInstance()->device_scale_factor);
+
+  pt.x = pt.x - current_offset_x;
+  pt.y = pt.y - current_offset_y;
+
+  LOG(INFO) << "dragging FINISHED at " << pt.x << " " << pt.y;
+
+  browser_->GetHost()->DragSourceEndedAt(
+      pt.x,
+      pt.y,
+      result);
+  browser_->GetHost()->DragSourceSystemDragEnded();
+
+  AttachThreadInput(GetCurrentThreadId(), dart_cef::DartCefPlugin::GetInstance()->appUIThread, FALSE);
+  // if (msg_hook)
+  // {
+  //   UnhookWindowsHookEx(msg_hook);
+  //   msg_hook = NULL;
+  // }
+
+  return false;
+}
+
+CefMouseEvent BrowserBridge::getCurrentCursorPosition()
+{
+  POINT pt = {};
+  GetCursorPos(&pt);
+  ScreenToClient(dart_cef::DartCefPlugin::GetInstance()->hwnd, &pt);
+  CefMouseEvent mouse_event;
+  mouse_event.x = pt.x;
+  mouse_event.y = pt.y;
+  return mouse_event;
+}
+
+void BrowserBridge::OnDragEnterQ(
+    const CefString &data)
+{
+  if (!CefCurrentlyOn(TID_UI))
+  {
+    CefPostTask(TID_UI, base::BindOnce(&BrowserBridge::OnDragEnterQ, this,
+                                       data));
+    return;
+  }
+  CefRefPtr<CefDragData> drag_data = CefDragData::Create();
+  drag_data->SetFragmentText(data);
+  CefMouseEvent ev = getCurrentCursorPosition();
+  OnDragEnter(drag_data, ev, CefBrowserHost::DragOperationsMask::DRAG_OPERATION_COPY);
+}
+void BrowserBridge::OnDragOverQ()
+{
+  if (!CefCurrentlyOn(TID_UI))
+  {
+    CefPostTask(TID_UI, base::BindOnce(&BrowserBridge::OnDragOverQ, this));
+    return;
+  }
+  CefMouseEvent ev = getCurrentCursorPosition();
+  OnDragOver(ev, CefBrowserHost::DragOperationsMask::DRAG_OPERATION_COPY);
+}
+void BrowserBridge::OnDropQ()
+{
+  if (!CefCurrentlyOn(TID_UI))
+  {
+    CefPostTask(TID_UI, base::BindOnce(&BrowserBridge::OnDropQ, this));
+    return;
+  }
+  CefMouseEvent ev = getCurrentCursorPosition();
+  OnDrop(ev, CefBrowserHost::DragOperationsMask::DRAG_OPERATION_COPY);
+}
+
+CefBrowserHost::DragOperationsMask BrowserBridge::OnDragEnter(
+    CefRefPtr<CefDragData> drag_data,
+    CefMouseEvent ev,
+    CefBrowserHost::DragOperationsMask effect)
+{
+  if (browser_)
+  {
+
+    client::DeviceToLogical(ev, dart_cef::DartCefPlugin::GetInstance()->device_scale_factor);
+    ev.x = ev.x - current_offset_x;
+    ev.y = ev.y - current_offset_y;
+    browser_->GetHost()->DragTargetDragEnter(drag_data, ev, effect);
+    browser_->GetHost()->DragTargetDragOver(ev, effect);
+  }
+  return dart_cef::DartCefPlugin::GetInstance()->current_drag_op;
+}
+
+CefBrowserHost::DragOperationsMask BrowserBridge::OnDragOver(
+    CefMouseEvent ev,
+    CefBrowserHost::DragOperationsMask effect)
+{
+  if (browser_)
+  {
+    client::DeviceToLogical(ev, dart_cef::DartCefPlugin::GetInstance()->device_scale_factor);
+    ev.x = ev.x - current_offset_x;
+    ev.y = ev.y - current_offset_y;
+    browser_->GetHost()->DragTargetDragOver(ev, effect);
+  }
+  return dart_cef::DartCefPlugin::GetInstance()->current_drag_op;
+}
+
+void BrowserBridge::OnDragLeave()
+{
+  if (!CefCurrentlyOn(TID_UI))
+  {
+    CefPostTask(TID_UI, base::BindOnce(&BrowserBridge::OnDragLeave, this));
+    return;
+  }
+  if (browser_)
+    browser_->GetHost()->DragTargetDragLeave();
+}
+
+CefBrowserHost::DragOperationsMask BrowserBridge::OnDrop(
+    CefMouseEvent ev,
+    CefBrowserHost::DragOperationsMask effect)
+{
+  if (browser_)
+  {
+    client::DeviceToLogical(ev, dart_cef::DartCefPlugin::GetInstance()->device_scale_factor);
+    ev.x = ev.x - current_offset_x;
+    ev.y = ev.y - current_offset_y;
+    browser_->GetHost()->DragTargetDragOver(ev, effect);
+    browser_->GetHost()->DragTargetDrop(ev);
+  }
+  return dart_cef::DartCefPlugin::GetInstance()->current_drag_op;
 }
 
 void BrowserBridge::sendMouseClickEvent(CefMouseEvent &event,
@@ -663,36 +952,50 @@ void BrowserBridge::sendMouseClickEvent(CefMouseEvent &event,
                                         bool mouseUp,
                                         int clickCount)
 {
-  event.x = event.x - current_offset_x;
-  event.y = event.y - current_offset_y;
-
-  if (type == MBT_RIGHT && mouseUp == false)
+  if (!closing)
   {
-    const auto context_menu_event = flutter::EncodableValue(flutter::EncodableMap{
-        {flutter::EncodableValue(kEventType),
-         flutter::EncodableValue("showContextMenu")},
-    });
-    EmitEvent(context_menu_event);
+
+    event.x = event.x - current_offset_x;
+    event.y = event.y - current_offset_y;
+    if (type == MBT_RIGHT && mouseUp == false)
+    {
+      const auto context_menu_event = flutter::EncodableValue(flutter::EncodableMap{
+          {flutter::EncodableValue(kEventType),
+           flutter::EncodableValue("showContextMenu")},
+      });
+      EmitEvent(context_menu_event);
+    }
+    browser_->GetHost()->SetFocus(true);
+    browser_->GetHost()->SendMouseClickEvent(event, type, mouseUp, clickCount);
   }
-  browser_->GetHost()->SetFocus(true);
-  browser_->GetHost()->SendMouseClickEvent(event, type, mouseUp, clickCount);
+}
+
+void BrowserBridge::paste()
+{
+  browser_->GetFocusedFrame()->Paste();
 }
 
 void BrowserBridge::sendMouseMoveEvent(CefMouseEvent &event,
                                        bool mouseLeave)
 {
 
-  event.x = event.x - current_offset_x;
-  event.y = event.y - current_offset_y;
-  browser_->GetHost()->SendMouseMoveEvent(event, false);
+  if (!closing)
+  {
+    event.x = event.x - current_offset_x;
+    event.y = event.y - current_offset_y;
+    browser_->GetHost()->SendMouseMoveEvent(event, false);
+  }
 }
 
 void BrowserBridge::setCursorPos(int x, int y)
 {
-  CefMouseEvent ev;
-  ev.x = x;
-  ev.y = y;
-  browser_->GetHost()->SendMouseMoveEvent(ev, false);
+  if (!closing)
+  {
+    CefMouseEvent ev;
+    ev.x = x;
+    ev.y = y;
+    browser_->GetHost()->SendMouseMoveEvent(ev, false);
+  }
 }
 
 void BrowserBridge::closeBrowser(bool force)

@@ -84,7 +84,6 @@ namespace client
             browser->GetMainFrame()->ExecuteJavaScript(js, frame->GetURL(), 0);
           }
 
-          // Create an instance of my CefV8Handler object.
           CefRefPtr<CefV8Handler> handler = new ClientV8Handler(bind_func_, [this, context = context](const CefString &webMessage)
                                                                 {
             CefRefPtr<CefBrowser> browser = context->GetBrowser();
@@ -103,10 +102,9 @@ namespace client
           LOG(INFO) << "creating " << bind_func_ << " function handler";
           CefRefPtr<CefV8Value> func = CefV8Value::CreateFunction(bind_func_, handler);
 
-          // Add the "myfunc" function to the "window" object.
           object->SetValue(bind_func_, func, V8_PROPERTY_ATTRIBUTE_NONE);
 
-          // message_router_->OnContextCreated(browser, frame, context);
+          message_router_->OnContextCreated(browser, frame, context);
         }
         void OnBrowserCreated(CefRefPtr<ClientAppRenderer> app,
                               CefRefPtr<CefBrowser> browser,

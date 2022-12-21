@@ -5,9 +5,11 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'enums.dart';
 import 'package:context_menus/context_menus.dart';
+import 'package:super_clipboard/super_clipboard.dart';
+import 'package:super_drag_and_drop/super_drag_and_drop.dart';
 
+import '../webview_cef.dart';
 import 'cursor.dart';
 
 class CommonContextMenu extends StatefulWidget {
@@ -25,20 +27,31 @@ class _CommonContextMenuState extends State<CommonContextMenu>
   @override
   Widget build(BuildContext context) {
     // cardBuilder is provided to us by the mixin, pass it a list of children to layout
+    var buttons = [
+      buttonBuilder.call(
+        context,
+        ContextMenuButtonConfig(
+          "Копировать",
+          icon: const Icon(Icons.copy, size: 18),
+          onPressed: () => handlePressed(context, () {
+            widget.controller.getTextSelectionReport();
+          }),
+        ),
+      )
+    ];
+    buttons.add(buttonBuilder.call(
+      context,
+      ContextMenuButtonConfig(
+        "Вставить",
+        icon: const Icon(Icons.paste, size: 18),
+        onPressed: () => handlePressed(context, () {
+          widget.controller.paste();
+        }),
+      ),
+    ));
     return cardBuilder.call(
       context,
-      [
-        buttonBuilder.call(
-          context,
-          ContextMenuButtonConfig(
-            "Копировать",
-            icon: const Icon(Icons.copy, size: 18),
-            onPressed: () => handlePressed(context, () {
-              widget.controller.getTextSelectionReport();
-            }),
-          ),
-        )
-      ],
+      buttons,
     );
   }
 }
@@ -100,7 +113,7 @@ class BrowserSizeOffsetWrapper extends SingleChildRenderObjectWidget {
   }
 }
 
-const String _pluginChannelPrefix = 'webview_cef';
+const String _pluginChannelPrefix = 'dart_cef';
 
 const MethodChannel _pluginMethodChannel = MethodChannel(_pluginChannelPrefix);
 const EventChannel _pluginEventChannel =
@@ -114,13 +127,25 @@ Future<void> shudownAllCEFBrowsers(bool force) async {
   return _pluginMethodChannel.invokeMethod('closeAllBrowsers', force);
 }
 
-Future<void> shutdownCEF() async {
+Future<void> shutdownCEFLoop() async {
   if (activeBrowsers > 0) {
     _shuttingDownCompleter = Completer();
     await shudownAllCEFBrowsers(true);
     await _shuttingDownCompleter!.future;
-    await _pluginMethodChannel.invokeMethod("shutdown");
   }
+  Completer loopShutdown = Completer();
+  var sub = _pluginEventChannel.receiveBroadcastStream().listen((event) {
+    if (event["type"] == "loopTerminated") {
+      loopShutdown.complete();
+    }
+  });
+  await _pluginMethodChannel.invokeMethod("shutdownMessageLoop");
+  await loopShutdown.future;
+  sub.cancel();
+}
+
+Future<void> shutdownCEF() async {
+  await _pluginMethodChannel.invokeMethod("shutdown");
 }
 
 class CefRect {
@@ -226,7 +251,6 @@ class WebviewController extends ValueNotifier<bool> {
         switch (map['type']) {
           case 'browserEvent':
             final event = WebviewEvent.values[map['value']];
-            print("webview_cef recieved browserEvent $event");
             _browserEventsController.add(event);
             break;
           case 'loadingState':
@@ -292,7 +316,6 @@ class WebviewController extends ValueNotifier<bool> {
       _creatingCompleter.completeError(e);
     }
 
-    value = true;
     return _creatingCompleter.future;
   }
 
@@ -372,6 +395,38 @@ class WebviewController extends ValueNotifier<bool> {
     return _methodChannel.invokeMethod('setToken', token);
   }
 
+  Future<void> onDragEnter(String data) async {
+    if (_isDisposed) {
+      return;
+    }
+    assert(value);
+    return _methodChannel.invokeMethod('onDragEnter', data);
+  }
+
+  Future<void> onDragOver() async {
+    if (_isDisposed) {
+      return;
+    }
+    assert(value);
+    return _methodChannel.invokeMethod('onDragOver');
+  }
+
+  Future<void> onDragLeave() async {
+    if (_isDisposed) {
+      return;
+    }
+    assert(value);
+    return _methodChannel.invokeMethod('onDragLeave');
+  }
+
+  Future<void> onDrop() async {
+    if (_isDisposed) {
+      return;
+    }
+    assert(value);
+    return _methodChannel.invokeMethod('onDrop');
+  }
+
   Future<void> setAccessToken(String token) async {
     if (_isDisposed) {
       return;
@@ -398,6 +453,16 @@ class WebviewController extends ValueNotifier<bool> {
     return _methodChannel.invokeMethod('setHidden', hidden);
   }
 
+  Future<void> paste() async {
+    if (_isDisposed) {
+      return;
+    }
+    if (!value) {
+      return;
+    }
+    return _methodChannel.invokeMethod('paste');
+  }
+
   Future<void> setCurrent(bool current) async {
     if (_isDisposed) {
       return;
@@ -408,14 +473,34 @@ class WebviewController extends ValueNotifier<bool> {
     return _methodChannel.invokeMethod('setCurrent', current);
   }
 
+  Future<void> setFocus(bool focus) async {
+    if (_isDisposed) {
+      return;
+    }
+    if (!value) {
+      return;
+    }
+    return _methodChannel.invokeMethod('setFocus', focus);
+  }
+
+  Future<void> setDartFocus(bool focus) async {
+    if (_isDisposed) {
+      return;
+    }
+    if (!value) {
+      return;
+    }
+    return _methodChannel.invokeMethod('setDartFocus', focus);
+  }
+
   /// Sets the surface size to the provided [size].
   Future<void> _setSize(Size size) async {
     if (_isDisposed) {
       return;
     }
     assert(value);
-    return _methodChannel.invokeMethod('setSize',
-        {"width": size.width.round(), "height": size.height.round()});
+    return _methodChannel
+        .invokeMethod('setSize', [size.width.round(), size.height.round()]);
   }
 
   Future<void> _setOffset(Offset offset) async {
@@ -423,8 +508,8 @@ class WebviewController extends ValueNotifier<bool> {
       return;
     }
     assert(value);
-    return _methodChannel.invokeMethod(
-        'setOffset', {"x": offset.dx.round(), "y": offset.dy.round()});
+    return _methodChannel
+        .invokeMethod('setOffset', [offset.dx.round(), offset.dy.round()]);
   }
 
   Future<void> _setScrollDelta(int dx, int dy) async {
@@ -432,7 +517,16 @@ class WebviewController extends ValueNotifier<bool> {
       return;
     }
     assert(value);
-    return _methodChannel.invokeMethod('setScrollDelta', {"x": dx, "y": dy});
+    return _methodChannel.invokeMethod('setScrollDelta', [dx, dy]);
+  }
+
+  Future<void> _cursorClickDown(Offset position) async {
+    if (_isDisposed) {
+      return;
+    }
+    assert(value);
+    return _methodChannel.invokeMethod(
+        'cursorClickDown', [position.dx.round(), position.dy.round()]);
   }
 
   Future<void> updateOffset() async {
@@ -447,39 +541,12 @@ class WebviewController extends ValueNotifier<bool> {
           .invokeMethod('setOffset', [offset.dx.round(), offset.dy.round()]);
     }
   }
-
-  Future<void> _cursorClickDown(Offset position) async {
-    if (_isDisposed) {
-      return;
-    }
-    assert(value);
-    return _methodChannel.invokeMethod('cursorClickDown',
-        {"x": position.dx.round(), "y": position.dy.round()});
-  }
-
-  Future<void> _cursorClickUp(Offset position) async {
-    if (_isDisposed) {
-      return;
-    }
-    assert(value);
-    return _methodChannel.invokeMethod(
-        'cursorClickUp', {"x": position.dx.round(), "y": position.dy.round()});
-  }
-
-  Future<void> _setCursorPos(Offset position) async {
-    if (_isDisposed) {
-      return;
-    }
-    assert(value);
-    return _methodChannel.invokeMethod(
-        'setCursorPos', {"x": position.dx.round(), "y": position.dy.round()});
-  }
 }
 
 class Webview extends StatefulWidget {
   final WebviewController controller;
 
-  const Webview(this.controller, {Key? key}) : super(key: key);
+  Webview(this.controller, {Key? key}) : super(key: key);
 
   @override
   _WebviewState createState() => _WebviewState();
@@ -496,9 +563,14 @@ class _WebviewState extends State<Webview> {
 
   var current = false;
 
+  var enteredWebview = false;
+
+  var dropEntered = false;
+
   @override
   void initState() {
     super.initState();
+    _controller.setHidden(false);
     _cursorSubscription = _controller._cursor.listen((cursor) {
       setState(() {
         _cursor = cursor;
@@ -507,16 +579,20 @@ class _WebviewState extends State<Webview> {
     _textSelectionSubscription = _controller.textSelection.listen((event) {
       Clipboard.setData(ClipboardData(text: event));
     });
-    _controller.setHidden(false);
+    webViewFocus.addListener(() {
+      if (!webViewFocus.hasFocus) {
+        enteredWebview = false;
+      }
+    });
   }
 
   @override
   void dispose() async {
     _cursorSubscription?.cancel();
     _textSelectionSubscription?.cancel();
-    super.dispose();
     _controller.setHidden(true);
     _controller.setCurrent(false);
+    super.dispose();
   }
 
   @override
@@ -527,6 +603,26 @@ class _WebviewState extends State<Webview> {
         child: _buildInner(),
       ),
     );
+  }
+
+  void checkForEntered(DropItem item) async {
+    if (!dropEntered) {
+      // data reader is available now
+      final reader = item.dataReader!;
+      if (reader.hasValue(Formats.plainText)) {
+        reader.getValue(Formats.plainText, (value) async {
+          if (value.error != null) {
+            print('Error reading value ${value.error}');
+          } else {
+            await widget.controller.onDragEnter(value.value.toString());
+            print('Dropped text: ${value.value}');
+          }
+        });
+      }
+      setState(() {
+        dropEntered = true;
+      });
+    }
   }
 
   Widget _buildInner() {
@@ -544,15 +640,11 @@ class _WebviewState extends State<Webview> {
               }
             },
             onPointerDown: (ev) {
-              _controller._cursorClickDown(ev.localPosition);
-            },
-            onPointerUp: (ev) {
-              _controller._cursorClickUp(ev.localPosition);
-            },
-            onPointerHover: (ev) {
-              _controller._setCursorPos(ev.localPosition);
               if (!webViewFocus.hasFocus) {
                 webViewFocus.requestFocus();
+                _controller.setFocus(true);
+                _controller.setDartFocus(true);
+                _controller._cursorClickDown(ev.localPosition);
               }
               if (!current) {
                 setState(() {
@@ -562,20 +654,20 @@ class _WebviewState extends State<Webview> {
               }
             },
             child: MouseRegion(
-                onEnter: (event) {
-                  if (!webViewFocus.hasFocus) {
-                    webViewFocus.requestFocus();
-                  }
-                  if (!current) {
+                onHover: (event) {
+                  if (!enteredWebview && !webViewFocus.hasFocus) {
+                    _controller.setFocus(true);
+                    _controller.setCurrent(true);
                     setState(() {
-                      _controller.setCurrent(true);
-                      current = true;
+                      enteredWebview = true;
                     });
                   }
                 },
                 onExit: (event) {
                   if (webViewFocus.hasFocus) {
                     webViewFocus.unfocus();
+                    _controller.setFocus(false);
+                    _controller.setDartFocus(false);
                   }
                   if (current) {
                     setState(() {
@@ -585,7 +677,46 @@ class _WebviewState extends State<Webview> {
                   }
                 },
                 cursor: _cursor,
-                child: WebviewCore(controller: _controller)),
+                child: DropRegion(
+                    formats: const [Formats.plainText, Formats.plainText],
+                    hitTestBehavior: HitTestBehavior.opaque,
+                    onDropOver: (event) async {
+                      final item = event.session.items.first;
+                      checkForEntered(item);
+                      await widget.controller.onDragOver();
+                      // You can inspect local data here, as well as formats of each item.
+                      // However on certain platforms (mobile / web) the actual data is
+                      // only available when the drop is accepted (onPerformDrop).
+                      if (item.localData is Map) {
+                        // This is a drag within the app and has custom local data set.
+                      }
+                      if (item.hasValue(Formats.plainText)) {
+                        // this item contains plain text.
+                      }
+                      // This drop region only supports copy operation.
+                      if (event.session.allowedOperations
+                          .contains(DropOperation.copy)) {
+                        return DropOperation.copy;
+                      } else {
+                        return DropOperation.none;
+                      }
+                    },
+                    onDropEnter: (event) async {
+                      final item = event.session.items.first;
+                      checkForEntered(item);
+                    },
+                    onDropLeave: (event) async {
+                      await widget.controller.onDragLeave();
+                    },
+                    onPerformDrop: (event) async {
+                      widget.controller.onDrop();
+                    },
+                    onDropEnded: (event) async {
+                      setState(() {
+                        dropEntered = false;
+                      });
+                    },
+                    child: WebviewCore(controller: _controller))),
           )),
     );
   }

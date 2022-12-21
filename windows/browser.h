@@ -6,6 +6,7 @@
 #include <flutter/event_channel.h>
 #include <flutter/method_channel.h>
 #include <flutter/texture_registrar.h>
+#include "osr_dragdrop_win.h"
 
 #include "include/cef_browser.h"
 
@@ -14,7 +15,7 @@
 
 void newBrowserInstance(int64_t texture_id, const CefString &initialUrl, const CefString &bind_func, const CefString &token, const CefString &access_token);
 
-class BrowserBridge : public virtual CefBaseRefCounted
+class BrowserBridge : public virtual CefBaseRefCounted, public client::OsrDragEvents
 {
 public:
     BrowserBridge(flutter::BinaryMessenger *messenger,
@@ -42,6 +43,25 @@ public:
     void OnAfterCreated();
 
     void OnShutdown();
+
+    CefBrowserHost::DragOperationsMask OnDragEnter(
+        CefRefPtr<CefDragData> drag_data,
+        CefMouseEvent ev,
+        CefBrowserHost::DragOperationsMask effect) override;
+    CefBrowserHost::DragOperationsMask OnDragOver(
+        CefMouseEvent ev,
+        CefBrowserHost::DragOperationsMask effect) override;
+    void OnDragLeave() override;
+    CefBrowserHost::DragOperationsMask OnDrop(
+        CefMouseEvent ev,
+        CefBrowserHost::DragOperationsMask effect) override;
+
+    void OnDragEnterQ(
+        const CefString &data);
+    void OnDragOverQ();
+    void OnDropQ();
+
+    CefMouseEvent getCurrentCursorPosition();
 
     void OnWebMessage(const CefString &message);
 
@@ -117,10 +137,22 @@ public:
 
     void setAccessToken(std::string token);
 
+    void paste();
+
+    void setFocus(bool focus);
+
     bool closing = false;
 
-private:
     CefRefPtr<CefBrowser> browser_;
+
+    bool StartDragging(
+        CefRefPtr<CefDragData> drag_data,
+        CefRenderHandler::DragOperationsMask allowed_ops,
+        int x,
+        int y);
+
+private:
+    bool dart_focus = false;
 
     void OnWebviewStateChange(WebviewState state);
 

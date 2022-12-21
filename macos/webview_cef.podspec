@@ -1,9 +1,9 @@
 #
 # To learn more about a Podspec see http://guides.cocoapods.org/syntax/podspec.html.
-# Run `pod lib lint webview_cef.podspec` to validate before publishing.
+# Run `pod lib lint dart_cef.podspec` to validate before publishing.
 #
 Pod::Spec.new do |s|
-  s.name             = 'webview_cef'
+  s.name             = 'dart_cef'
   s.version          = '0.0.1'
   s.summary          = 'Flutter webview backed by CEF (Chromium Embedded Framework)'
   s.description      = <<-DESC

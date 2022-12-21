@@ -19,6 +19,7 @@ class SimpleHandler : public CefClient,
                       public CefDisplayHandler,
                       public CefLifeSpanHandler,
                       public CefLoadHandler,
+                      public CefDragHandler,
                       public CefRenderHandler,
                       public CefContextMenuHandler
 {
@@ -33,7 +34,10 @@ public:
                                CefRefPtr<CefFrame> frame,
                                const CefString &url) override;
 
-  virtual void SimpleHandler::OnBeforeContextMenu(
+  void NotifyDraggableRegions(
+      const std::vector<CefDraggableRegion> &regions);
+
+  void OnBeforeContextMenu(
       CefRefPtr<CefBrowser> browser,
       CefRefPtr<CefFrame> frame,
       CefRefPtr<CefContextMenuParams> params,
@@ -41,6 +45,26 @@ public:
   {
     model->Clear();
   };
+
+  virtual bool StartDragging(CefRefPtr<CefBrowser> browser,
+                     CefRefPtr<CefDragData> drag_data,
+                     CefDragHandler::DragOperationsMask allowed_ops,
+                     int x,
+                     int y) override;
+
+  // CefDragHandler methods
+  virtual bool OnDragEnter(CefRefPtr<CefBrowser> browser,
+                           CefRefPtr<CefDragData> dragData,
+                           CefDragHandler::DragOperationsMask mask) override;
+  virtual void OnDraggableRegionsChanged(
+      CefRefPtr<CefBrowser> browser,
+      CefRefPtr<CefFrame> frame,
+      const std::vector<CefDraggableRegion> &regions) override;
+
+  virtual CefRefPtr<CefDragHandler> GetDragHandler() override { return this; }
+
+  void OnSetDraggableRegions(
+      const std::vector<CefDraggableRegion> &regions){};
 
   virtual void OnTitleChange(CefRefPtr<CefBrowser> browser,
                              const CefString &title) override;
@@ -124,9 +148,13 @@ public:
   // Request that all existing browser windows close.
   void CloseAllBrowsers(bool force_close);
 
+  BrowserBridge *current_bridge = nullptr;
+
   bool IsClosing() const { return is_closing_; }
 
   CefRefPtr<BrowserBridge> getBridge(int browser_id);
+
+  std::map<int64_t, CefRefPtr<BrowserBridge>> browser_list_;
 
 private:
   // Platform-specific implementation.
@@ -134,7 +162,6 @@ private:
                            const CefString &title);
 
   // Map of existing browser windows (texture id -> bridge). Needs to be cleaned when browser destroys
-  std::map<int64_t, CefRefPtr<BrowserBridge>> browser_list_;
 
   // Map of browser id -> texture id
   std::map<int, int64_t> cache_;

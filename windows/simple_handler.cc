@@ -16,7 +16,7 @@
 #include "data.h"
 #include "webview.h"
 #include <fmt/core.h>
-#include "webview_cef_plugin.h"
+#include "dart_cef_plugin.h"
 
 namespace
 {
@@ -28,7 +28,7 @@ SimpleHandler::SimpleHandler()
     : is_closing_(false)
 {
   g_instance = this;
-  webview_cef::WebviewCefPlugin::handler = this;
+  dart_cef::DartCefPlugin::handler = this;
 }
 
 SimpleHandler::~SimpleHandler()
@@ -101,7 +101,8 @@ bool SimpleHandler::OnProcessMessageReceived(
       bridge->browserEvent(WebviewEvent::AccessTokenUpdated);
     }
   }
-  else if (message_name == client::renderer::kTextSelectionReport) {
+  else if (message_name == client::renderer::kTextSelectionReport)
+  {
     CefString text = message->GetArgumentList()->GetString(0).ToString();
     auto bridge = getBridge(browser->GetIdentifier());
     if (bridge)
@@ -128,8 +129,10 @@ void SimpleHandler::OnBeforeClose(CefRefPtr<CefBrowser> browser)
 
   if (bridge)
   {
+    bridge->closing = true;
     cache_.erase(browser->GetIdentifier());
     browser_list_[bridge->texture_id()]->resetBrowser();
+    LOG(INFO) << "CEFSHUTDOWN erased from cache_, browserbridge's browser reset, sending event...";
     bridge->OnShutdown();
   }
 }
@@ -171,6 +174,7 @@ void SimpleHandler::CloseAllBrowsers(bool force_close)
   {
 
     LOG(INFO) << "closing browser with texture " << key;
+    value->browser_->StopLoad();
     value->closeBrowser(force_close);
   }
 }
@@ -247,6 +251,53 @@ void SimpleHandler::GetViewRect(CefRefPtr<CefBrowser> browser, CefRect &rect)
   return;
 }
 
+bool SimpleHandler::OnDragEnter(CefRefPtr<CefBrowser> browser,
+                                CefRefPtr<CefDragData> dragData,
+                                CefDragHandler::DragOperationsMask mask)
+{
+  CEF_REQUIRE_UI_THREAD();
+  return false;
+}
+
+void SimpleHandler::OnDraggableRegionsChanged(
+    CefRefPtr<CefBrowser> browser,
+    CefRefPtr<CefFrame> frame,
+    const std::vector<CefDraggableRegion> &regions)
+{
+  CEF_REQUIRE_UI_THREAD();
+  NotifyDraggableRegions(regions);
+}
+
+bool SimpleHandler::StartDragging(CefRefPtr<CefBrowser> browser,
+                                  CefRefPtr<CefDragData> drag_data,
+                                  CefDragHandler::DragOperationsMask allowed_ops,
+                                  int x,
+                                  int y)
+{
+  LOG(INFO) << "StartDragging " << browser->GetIdentifier();
+
+  auto bridge = getBridge(browser->GetIdentifier());
+  if (bridge)
+  {
+    return bridge->StartDragging(drag_data, allowed_ops, x, y);
+  }
+  return false;
+}
+
+void SimpleHandler::NotifyDraggableRegions(
+    const std::vector<CefDraggableRegion> &regions)
+{
+  // if (!CURRENTLY_ON_MAIN_THREAD()) {
+  // Execute this method on the main thread.
+  //   MAIN_POST_CLOSURE(
+  //       base::BindOnce(&ClientHandler::NotifyDraggableRegions, this, regions));
+  //   return;
+  // }
+
+  // if (delegate_)
+  //   delegate_->OnSetDraggableRegions(regions);
+}
+
 int64_t SimpleHandler::createBrowser(flutter::BinaryMessenger *messenger,
                                      flutter::TextureRegistrar *texture_registrar, const CefString &url, const CefString &bind_func, const CefString &token, const CefString &access_token)
 {
@@ -261,7 +312,7 @@ void SimpleHandler::OnPaint(CefRefPtr<CefBrowser> browser, CefRenderHandler::Pai
 {
   CEF_REQUIRE_UI_THREAD();
   auto bridge = getBridge(browser->GetIdentifier());
-  if (bridge && !bridge->closing && bridge->texture_bridge)
+  if (bridge && !bridge->closing && bridge->texture_bridge && !bridge->closing)
   {
     if (type == PET_POPUP)
     {

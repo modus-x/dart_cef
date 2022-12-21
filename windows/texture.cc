@@ -25,7 +25,6 @@ Texture::Texture()
 Texture::~Texture()
 {
     std::cout << "texture destructor" << std::endl;
-    const std::lock_guard<std::mutex> lock(buffer_mutex_);
 }
 
 const FlutterDesktopPixelBuffer *Texture::CopyPixelBuffer(
