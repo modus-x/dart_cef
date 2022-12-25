@@ -32,6 +32,8 @@ doc/api/
 .history
 .svn/
 migrate_working_dir/
+GPUCache
+DawnCache
 
 # IntelliJ related
 *.iml
